@@ -797,6 +797,11 @@
 			interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
+		prcm@08001400 {
+			compatible = "allwinner,sun9i-a80-prcm";
+			reg = <0x08001400 0x200>;
+		};
+
 		r_uart: serial@08002800 {
 			compatible = "snps,dw-apb-uart";
 			reg = <0x08002800 0x400>;
