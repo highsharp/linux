@@ -57,6 +57,30 @@
 	chosen {
 		stdout-path = "serial0:115200n8";
 	};
+
+	usb-hub {
+		/* I2C is not connected */
+		compatible = "smsc,usb3503";
+		pinctrl-names = "default";
+		pinctrl-0 = <&usb_hub_control_pins_cubietruck_plus>,
+			    <&usb_hub_int_pin_cubietruck_plus>;
+		initial-mode = <1>; /* initialize in HUB mode */
+		disabled-ports = <1>;
+		intn-gpios = <&pio 7 5 GPIO_ACTIVE_HIGH>; /* PH5 */
+		reset-gpios = <&pio 4 16 GPIO_ACTIVE_HIGH>; /* PE16 */
+		connect-gpios = <&pio 4 17 GPIO_ACTIVE_HIGH>; /* PE17 */
+		refclk-frequency = <19200000>;
+	};
+};
+
+&ehci0 {
+	/* GL830 USB-to-SATA bridge here */
+	status = "okay";
+};
+
+&ehci1 {
+	/* USB3503 HSIC USB 2.0 hub here */
+	status = "okay";
 };
 
 &mmc0 {
@@ -79,6 +103,42 @@
 	status = "okay";
 };
 
+&pio {
+	usb_hub_control_pins_cubietruck_plus: usb_hub_control_pins {
+		allwinner,pins = "PE16", "PE17";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+
+	usb_hub_int_pin_cubietruck_plus: usb_hub_int_pin {
+		allwinner,pins = "PH5";
+		allwinner,function = "irq";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+};
+
+&r_pio {
+	usb2_vbus_pin_cubietruck_plus: usb2_vbus_pin_b {
+		allwinner,pins = "PL6";
+		allwinner,function = "gpio_out";
+		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
+		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+	};
+};
+
+&reg_usb1_vbus {
+	gpio = <&pio 3 29 GPIO_ACTIVE_HIGH>; /* PD29 */
+	status = "okay";
+};
+
+&reg_usb2_vbus {
+	pinctrl-0 = <&usb2_vbus_pin_cubietruck_plus>;
+	gpio = <&r_pio 0 6 GPIO_ACTIVE_HIGH>; /* PL6 */
+	status = "okay";
+};
+
 &reg_vcc3v3 {
 	status = "disabled";
 };
@@ -91,4 +151,20 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pins_b>;
 	status = "okay";
+};
+
+&usbphy {
+	usb1_vbus-supply = <&reg_usb1_vbus>;
+	usb2_vbus-supply = <&reg_usb2_vbus>;
+	status = "okay";
+};
+
+&usb_otg {
+	/* VBUS detection/drive support in PMIC required for OTG */
+	dr_mode = "host";
+	status = "okay";
+};
+
+&usb1_vbus_pin_a {
+	allwinner,pins = "PD29";
 };
