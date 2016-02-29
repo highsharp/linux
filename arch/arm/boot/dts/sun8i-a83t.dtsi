@@ -493,6 +493,17 @@
 			#interrupt-cells = <3>;
 			#gpio-cells = <3>;
 
+			emac_rgmii_pins: emac@0 {
+				allwinner,pins = "PD2", "PD3", "PD4",
+						 "PD5", "PD6", "PD7",
+						 "PD11", "PD12", "PD13",
+						 "PD14", "PD18", "PD19",
+						 "PD21", "PD22", "PD23";
+				allwinner,function = "gmac";
+				allwinner,drive = <SUN4I_PINCTRL_40_MA>;
+				allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
+			};
+
 			mmc0_pins_a: mmc0@0 {
 				allwinner,pins = "PF0", "PF1", "PF2",
 						 "PF3", "PF4", "PF5";
