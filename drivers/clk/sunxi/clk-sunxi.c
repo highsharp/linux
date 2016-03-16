@@ -872,6 +872,12 @@ static const struct div_data sun4i_apb0_data __initconst = {
 	.table	= sun4i_apb0_table,
 };
 
+static const struct div_data sun8i_a83t_apb1_data __initconst = {
+	.shift	= 8,
+	.pow	= 0,
+	.width	= 2,
+};
+
 static void __init sunxi_divider_clk_setup(struct device_node *node,
 					   const struct div_data *data)
 {
@@ -937,6 +943,13 @@ static void __init sun4i_apb0_clk_setup(struct device_node *node)
 }
 CLK_OF_DECLARE(sun4i_apb0, "allwinner,sun4i-a10-apb0-clk",
 	       sun4i_apb0_clk_setup);
+
+static void __init sun8i_a83t_apb1_clk_setup(struct device_node *node)
+{
+	sunxi_divider_clk_setup(node, &sun8i_a83t_apb1_data);
+}
+CLK_OF_DECLARE(sun8i_a83t_apb1, "allwinner,sun8i-a83t-apb1-clk",
+	       sun8i_a83t_apb1_clk_setup);
 
 static void __init sun4i_axi_clk_setup(struct device_node *node)
 {
