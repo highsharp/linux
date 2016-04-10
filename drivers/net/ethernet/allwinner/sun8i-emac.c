@@ -173,6 +173,7 @@ struct sun8i_emac_priv {
 	struct clk *ahb_clk;
 	struct clk *tx_clk;
 	u32 mdc;
+	struct regulator *regulator;
 
 	struct reset_control *rst_phy;
 	struct reset_control *rst;
@@ -724,11 +725,17 @@ static int sun8i_emac_init(struct net_device *ndev)
 		return ret;
 	}
 
+	if (priv->regulator) {
+		ret = regulator_enable(priv->regulator);
+		if (ret)
+			goto err_disable_ahb_clk;
+	}
+
 	if (priv->rst) {
 		ret = reset_control_deassert(priv->rst);
 		if (ret) {
 			netdev_err(ndev, "Could not deassert reset\n");
-			goto err_disable_ahb_clk;
+			goto err_regulator;
 		}
 	}
 
@@ -766,6 +773,9 @@ err_disable_tx_clk:
 		clk_disable_unprepare(priv->tx_clk);
 	if (priv->rst)
 		reset_control_assert(priv->rst);
+err_regulator:
+	if (priv->regulator)
+		regulator_disable(priv->regulator);
 err_disable_ahb_clk:
 	clk_disable_unprepare(priv->ahb_clk);
 	return ret;
@@ -782,6 +792,9 @@ static void sun8i_emac_uninit(struct net_device *ndev)
 
 	if (priv->rst)
 		reset_control_assert(priv->rst);
+
+	if (priv->regulator)
+		regulator_disable(priv->regulator);
 
 	clk_disable_unprepare(priv->ahb_clk);
 }
@@ -1565,6 +1578,15 @@ static int sun8i_emac_probe(struct platform_device *pdev)
 		ret = PTR_ERR(priv->rst);
 		dev_info(&pdev->dev, "no mac reset control found %d\n", ret);
 		priv->rst = NULL;
+	}
+
+	/* Optional regulator for PHY */
+	priv->regulator = devm_regulator_get_optional(priv->dev, "phy");
+	if (IS_ERR(priv->regulator)) {
+		if (PTR_ERR(priv->regulator) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+		dev_dbg(priv->dev, "no regulator found\n");
+		priv->regulator = NULL;
 	}
 
 	spin_lock_init(&priv->lock);
