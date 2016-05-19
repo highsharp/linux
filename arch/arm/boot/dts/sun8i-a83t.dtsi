@@ -610,6 +610,14 @@
 			#interrupt-cells = <3>;
 			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_HIGH)>;
 		};
+                nmi_intc: interrupt-controller@01f00c0c {
+                        compatible = "allwinner,sun6i-a31-sc-nmi";
+                        interrupt-controller;
+                        #interrupt-cells = <2>;
+                        reg = <0x01f00c0c 0x38>;
+                        interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
+                };
+
 
 		apb0_reset: reset@01f014b0 {
 			reg = <0x01f014b0 0x4>;
