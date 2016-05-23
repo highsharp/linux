@@ -74,10 +74,11 @@
 	phy = <&phy1>;
 	phy-mode = "rgmii";
 	status = "okay";
+	phy-supply = <&reg_sw>;
 	/* TODO: add regluator supplies for phy */
 
-	phy1: ethernet-phy@1 {
-		  reg = <1>;
+	phy1: ethernet-phy@0 {
+		  reg = <0>;
 	};
 };
 
@@ -269,4 +270,10 @@
 	regulator-max-microvolt = <3100000>;
 	regulator-name = "gpio1-ldo";
 };
+
+&reg_sw {
+	regulator-always-on;
+	regulator-name = "dcdc1-sw";
+};
+
 

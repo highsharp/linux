@@ -674,7 +674,8 @@ static void sun8i_emac_adjust_link(struct net_device *ndev)
 		priv->duplex = -1;
 	}
 
-	if (new_state)
+	//TODO test after delay parameter being applied
+//	if (new_state)
 		phy_print_status(phydev);
 
 	spin_unlock_irqrestore(&priv->lock, flags);

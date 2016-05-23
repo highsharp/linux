@@ -404,6 +404,7 @@ static const struct regulator_desc axp81x_regulators[] = {
 		    AXP22X_LDO_IO1_V_OUT, 0x1f, AXP20X_GPIO1_CTRL, 0x07,
 		    AXP22X_IO_ENABLED, AXP22X_IO_DISABLED),
 	AXP_DESC_FIXED(AXP81X, RTC_LDO, "rtc_ldo", "ips", 1800),
+	AXP_DESC_SW(AXP81X, SW, "sw", "swin", AXP81X_PWR_OUT_CTRL2, BIT(7)),
 };
 
 static int axp20x_set_dcdc_freq(struct platform_device *pdev, u32 dcdcfreq)
