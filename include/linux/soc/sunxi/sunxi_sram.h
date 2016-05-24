@@ -13,17 +13,7 @@
 #ifndef _SUNXI_SRAM_H_
 #define _SUNXI_SRAM_H_
 
-<<<<<<< HEAD
 int sunxi_sram_claim(struct device *dev);
 int sunxi_sram_release(struct device *dev);
-=======
-enum sunxi_sram_type {
-	SUNXI_SRAM_USB_OTG,
-	SUNXI_SRAM_EMAC,
-};
-
-int sunxi_sram_claim(enum sunxi_sram_type type, const char *function);
-int sunxi_sram_release(enum sunxi_sram_type type);
->>>>>>> wens/sun9i-smp-mcpm
 
 #endif /* _SUNXI_SRAM_H_ */

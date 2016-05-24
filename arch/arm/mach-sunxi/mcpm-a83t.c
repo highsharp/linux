@@ -22,7 +22,38 @@
 #include <asm/cputype.h>
 #include <asm/cp15.h>
 #include <asm/mcpm.h>
-#define __init
+
+#define SUNXI_CHIP_REV(p, v)  (p + v)
+
+#define SUNXI_CHIP_MASK      (0xFFFF0000)
+#define SUNXI_CHIP_SUN8IW1P1 (0x16330000)
+#define SUNXI_CHIP_SUN8IW3P1 (0x16500000)
+#define SUNXI_CHIP_SUN8IW5P1 (0x16670000)
+#define SUNXI_CHIP_SUN8IW6P1 (0x16730000)
+#define SUNXI_CHIP_SUN8IW7   (0x16800000)
+#define SUNXI_CHIP_SUN9IW1P1 (0x16390000)
+
+/* sunxi chip versions define */
+#define SUN8IW1P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW1P1, 0)
+#define SUN8IW1P1_REV_B SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW1P1, 1)
+#define SUN8IW1P1_REV_C SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW1P1, 2)
+#define SUN8IW1P1_REV_D SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW1P1, 3)
+
+#define SUN8IW3P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW3P1, 0)
+#define SUN8IW3P1_REV_B SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW3P1, 1)
+
+#define SUN8IW5P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW5P1, 0)
+#define SUN8IW5P1_REV_B SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW5P1, 1)
+
+#define SUN8IW6P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW6P1, 0)
+#define SUN8IW6P1_REV_B SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW6P1, 1)
+
+#define SUN8IW7P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW7, 0x0000)
+#define SUN8IW7P2_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN8IW7, 0x0100)
+
+#define SUN9IW1P1_REV_A SUNXI_CHIP_REV(SUNXI_CHIP_SUN9IW1P1, 0)
+#define SUN9IW1P1_REV_B SUNXI_CHIP_REV(SUNXI_CHIP_SUN9IW1P1, 1)
+
 
 /*
  * cpucfg
@@ -97,12 +128,11 @@
 #define PRCM_PWR_SWITCH_REG(c, cpu)	(0x140 + 0x10 * (c) + 0x4 * (cpu))
 #define PRCM_CPU_SOFT_ENTRY_REG		0x164
 
-#define CPU0_SUPPORT_HOTPLUG_MAGIC0	0xFA50392F
-#define CPU0_SUPPORT_HOTPLUG_MAGIC1	0x790DCA3A
-
 static void __iomem *cpuxcfg_base;
 static void __iomem *cpuscfg_base;
 static void __iomem *prcm_base;
+static unsigned int soc_version;
+
 
 static int sunxi_cpu_power_switch_set(unsigned int cpu, unsigned int cluster,
 				      bool enable)
@@ -136,157 +166,210 @@ static int sunxi_cpu_power_switch_set(unsigned int cpu, unsigned int cluster,
 	return 0;
 }
 
-static void sunxi_cpu0_hotplug_support_set(bool enable)
+static int sun8i_cpu_power_switch_set(unsigned int cluster, unsigned int cpu, bool enable)
 {
 	if (enable) {
-		writel(CPU0_SUPPORT_HOTPLUG_MAGIC0, sram_b_smp_base);
-		writel(CPU0_SUPPORT_HOTPLUG_MAGIC1, sram_b_smp_base + 0x4);
+		if (0x00 == readl(prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			pr_debug("%s: power switch enable already\n", __func__);
+			return 0;
+		}
+		/* de-active cpu power clamp */
+		writel(0xFE, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(20);
+
+		writel(0xF8, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+
+		writel(0xE0, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+		writel(0xc0, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+		writel(0x80, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+
+		writel(0x00, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(20);
+		while(0x00 != readl(prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			;
+		}
 	} else {
-		writel(0x0, sram_b_smp_base);
-		writel(0x0, sram_b_smp_base + 0x4);
+		if (0xFF == readl(prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			pr_debug("%s: power switch disable already\n", __func__);
+			return 0;
+		}
+		writel(0xFF, prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(30);
+		while(0xFF != readl(prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			;
+		}
 	}
+	return 0;
 }
 
 static int sunxi_cpu_powerup(unsigned int cpu, unsigned int cluster)
 {
-	u32 reg;
-
-	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
-	if (cpu >= SUNXI_CPUS_PER_CLUSTER || cluster >= SUNXI_NR_CLUSTERS)
-		return -EINVAL;
-
-	/* Set hotplug support magic flags for cpu0 */
-	if (cluster == 0 && cpu == 0)
-		sunxi_cpu0_hotplug_support_set(true);
-
-	/* assert processor power-on reset */
-	reg = readl(prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
-	reg &= ~PRCM_CPU_PO_RST_CTRL_CORE(cpu);
-	writel(reg, prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
-
-	/* Cortex-A7: hold L1 reset disable signal low */
-	if (!(of_machine_is_compatible("allwinner,sun9i-a80") &&
-			cluster == SUN9I_A80_A15_CLUSTER)) {
-		reg = readl(cpuxcfg_base + CPUCFG_CX_CTRL_REG0(cluster));
-		reg &= ~CPUCFG_CX_CTRL_REG0_L1_RST_DISABLE(cpu);
-		writel(reg, cpuxcfg_base + CPUCFG_CX_CTRL_REG0(cluster));
-	}
-
-	/* assert processor related resets */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
-	reg &= ~CPUCFG_CX_RST_CTRL_DBG_RST(cpu);
-
+	unsigned int value;
 	/*
-	 * Allwinner code also asserts resets for NEON on A15. According
-	 * to ARM manuals, asserting power-on reset is sufficient.
+	 * power-up cpu core process
 	 */
-	if (!(of_machine_is_compatible("allwinner,sun9i-a80") &&
-			cluster == SUN9I_A80_A15_CLUSTER)) {
-		reg &= ~CPUCFG_CX_RST_CTRL_ETM_RST(cpu);
+	pr_debug("sun8i power-up cluster-%d cpu-%d\n", cluster, cpu);
+	printk("sun8i power-up cluster-%d cpu-%d\n", cluster, cpu);
+
+//	cpumask_set_cpu(((cluster)*4 + cpu), &cpu_power_up_state_mask);
+
+	/* assert cpu core reset */
+	value  = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	value &= (~(1<<cpu));
+	writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	udelay(10);
+
+	/* assert cpu power-on reset */
+	value  = readl(cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	value &= (~(1<<cpu));
+	writel(value, cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	udelay(10);
+
+	/* L1RSTDISABLE hold low */
+	value = readl(cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+	value &= ~(1<<cpu);
+	writel(value, cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+
+	/* release power switch */
+	sun8i_cpu_power_switch_set(cluster, cpu, 1);
+
+	if (cpu == 0) {
+		if (soc_version == SUN8IW6P1_REV_A) {
+			/* de-assert cpu power-on reset */
+			value = readl(cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+			value |= ((1<<cpu));
+			writel(value, cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+			udelay(10);
+
+			/* assert cpu core reset */
+			value  = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+			value |= (1<<cpu);
+			writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+			udelay(10);
+			return 0;
+		} else {
+			/* bit4: C1_cpu0 */
+			cpu = 4;
+		}
 	}
-	writel(reg, cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
 
-	/* open power switch */
-	sunxi_cpu_power_switch_set(cpu, cluster, true);
-
-	/* clear processor power gate */
-	reg = readl(prcm_base + PRCM_PWROFF_GATING_REG(cluster));
-	reg &= ~PRCM_PWROFF_GATING_REG_CORE(cpu);
-	writel(reg, prcm_base + PRCM_PWROFF_GATING_REG(cluster));
+	/* clear power-off gating */
+	value = readl(prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+	value &= (~(0x1<<cpu));
+	writel(value, prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 	udelay(20);
 
-	/* de-assert processor power-on reset */
-	reg = readl(prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
-	reg |= PRCM_CPU_PO_RST_CTRL_CORE(cpu);
-	writel(reg, prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
+	//WTF!!
+	if (cpu == 4)
+		cpu = 0;
 
-	/* de-assert all processor resets */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
-	reg |= CPUCFG_CX_RST_CTRL_DBG_RST(cpu);
-	reg |= CPUCFG_CX_RST_CTRL_CORE_RST(cpu);
-	if (!(of_machine_is_compatible("allwinner,sun9i-a80") &&
-			cluster == SUN9I_A80_A15_CLUSTER)) {
-		reg |= CPUCFG_CX_RST_CTRL_ETM_RST(cpu);
-	} else {
-		reg |= CPUCFG_CX_RST_CTRL_CX_RST(cpu); /* NEON */
-	}
-	writel(reg, cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
+	/* de-assert cpu power-on reset */
+	value  = readl(cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	value |= ((1<<cpu));
+	writel(value, cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	udelay(10);
 
+	/* de-assert core reset */
+	value  = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	value |= (1<<cpu);
+	writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	udelay(10);
+
+	pr_debug("sun8i power-up cluster-%d cpu-%d already\n", cluster, cpu);
 	return 0;
 }
 
 static int sunxi_cluster_powerup(unsigned int cluster)
 {
-	u32 reg;
-
-	pr_debug("%s: cluster %u\n", __func__, cluster);
-	if (cluster >= SUNXI_NR_CLUSTERS)
+	unsigned int value;
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+	/* cluster operation must wait arisc ready */
+	if (!is_arisc_ready()) {
+		pr_debug("%s: arisc not ready, can't power-up cluster\n", __func__);
 		return -EINVAL;
+	}
+#endif
+	pr_debug("sun8i power-up cluster-%d\n", cluster);
+	printk("sun8i power-up cluster-%d\n", cluster);
 
-	/* assert ACINACTM */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_CTRL_REG1(cluster));
-	reg |= CPUCFG_CX_CTRL_REG1_ACINACTM;
-	writel(reg, cpuxcfg_base + CPUCFG_CX_CTRL_REG1(cluster));
+	/* assert cluster cores resets */
+	value = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	value &= (~(0xF<<0));   /* Core Reset    */
+	writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	udelay(10);
 
-	/* assert cluster processor power-on resets */
-	reg = readl(prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
-	reg &= ~PRCM_CPU_PO_RST_CTRL_CORE_ALL;
-	writel(reg, prcm_base + PRCM_CPU_PO_RST_CTRL(cluster));
+	/* assert cluster cores power-on reset */
+	value = readl(cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	value &= (~(0xF));
+
+	writel(value, cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+	udelay(10);
 
 	/* assert cluster resets */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
-	reg &= ~CPUCFG_CX_RST_CTRL_DBG_SOC_RST;
-	reg &= ~CPUCFG_CX_RST_CTRL_DBG_RST_ALL;
-	reg &= ~CPUCFG_CX_RST_CTRL_H_RST;
-	reg &= ~CPUCFG_CX_RST_CTRL_L2_RST;
+	value = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	value &= (~(0x1<<24));  /* SOC DBG Reset */
+	value &= (~(0xF<<20));  /* ETM Reset     */
+	value &= (~(0xF<<16));  /* Debug Reset   */
+	value &= (~(0x1<<12));  /* HReset        */
+	value &= (~(0x1<<8));   /* L2 Cache Reset*/
+	writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	udelay(10);
 
-	/*
-	 * Allwinner code also asserts resets for NEON on A15. According
-	 * to ARM manuals, asserting power-on reset is sufficient.
-	 */
-	if (!(of_machine_is_compatible("allwinner,sun9i-a80") &&
-			cluster == SUN9I_A80_A15_CLUSTER)) {
-		reg &= ~CPUCFG_CX_RST_CTRL_ETM_RST_ALL;
-	}
-	writel(reg, cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
+	/* Set L2RSTDISABLE LOW */
+	value = readl(cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+	value &= (~(0x1<<4));
+	writel(value, cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 
-	/* hold L1/L2 reset disable signals low */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_CTRL_REG0(cluster));
-	if (of_machine_is_compatible("allwinner,sun9i-a80") &&
-			cluster == SUN9I_A80_A15_CLUSTER) {
-		/* Cortex-A15: hold L2RSTDISABLE low */
-		reg &= ~CPUCFG_CX_CTRL_REG0_L2_RST_DISABLE_A15;
-	} else {
-		/* Cortex-A7: hold L1RSTDISABLE and L2RSTDISABLE low */
-		reg &= ~CPUCFG_CX_CTRL_REG0_L1_RST_DISABLE_ALL;
-		reg &= ~CPUCFG_CX_CTRL_REG0_L2_RST_DISABLE_A7;
-	}
-	writel(reg, cpuxcfg_base + CPUCFG_CX_CTRL_REG0(cluster));
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+	/* notify arisc to power-up cluster */
+	arisc_dvfs_set_cpufreq(cluster_powerup_freq[cluster], cluster_pll[cluster],
+						   ARISC_MESSAGE_ATTR_SOFTSYN, NULL, NULL);
+	mdelay(1);
+#endif
 
-	/* clear cluster power gate */
-	reg = readl(prcm_base + PRCM_PWROFF_GATING_REG(cluster));
-	reg &= ~PRCM_PWROFF_GATING_REG_CLUSTER;
-	writel(reg, prcm_base + PRCM_PWROFF_GATING_REG(cluster));
+		if (soc_version == SUN8IW6P1_REV_A)
+			sun8i_cpu_power_switch_set(cluster, 0, 1);
+
+	/* active ACINACTM */
+	value = readl(cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+	value |= (1<<0);
+	writel(value, cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+
+	/* clear cluster power-off gating */
+	value = readl(prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+
+	if (soc_version == SUN8IW6P1_REV_A)
+			value &= (~(0x1<<4));
+	value &= (~(0x1<<0));
+	writel(value, prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 	udelay(20);
 
-	/* de-assert cluster resets */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
-	reg |= CPUCFG_CX_RST_CTRL_DBG_SOC_RST;
-	reg |= CPUCFG_CX_RST_CTRL_H_RST;
-	reg |= CPUCFG_CX_RST_CTRL_L2_RST;
-	writel(reg, cpuxcfg_base + CPUCFG_CX_RST_CTRL(cluster));
+	/* de-active ACINACTM */
+	value = readl(cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+	value &= (~(1<<0));
+	writel(value, cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 
-	/* de-assert ACINACTM */
-	reg = readl(cpuxcfg_base + CPUCFG_CX_CTRL_REG1(cluster));
-	reg &= ~CPUCFG_CX_CTRL_REG1_ACINACTM;
-	writel(reg, cpuxcfg_base + CPUCFG_CX_CTRL_REG1(cluster));
+	/* de-assert cores reset */
+	value = readl(cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	value |= (0x1<<24);  /* SOC DBG Reset */
+	value |= (0xF<<20);  /* ETM Reset     */
+	value |= (0xF<<16);  /* Debug Reset   */
+	value |= (0x1<<12);  /* HReset        */
+	value |= (0x1<<8);   /* L2 Cache Reset*/
+	writel(value, cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	udelay(20);
+	pr_debug("sun8i power-up cluster-%d ok\n", cluster);
 
 	return 0;
 }
 
 static void sunxi_cpu_powerdown_prepare(unsigned int cpu, unsigned int cluster)
 {
-	gic_cpu_if_down();
+	gic_cpu_if_down(0);
 }
 
 static void sunxi_cluster_powerdown_prepare(unsigned int cluster)
@@ -380,8 +463,8 @@ static int sunxi_wait_for_powerdown(unsigned int cpu, unsigned int cluster)
 	/* power down CPU core */
 	sunxi_cpu_powerdown(cpu, cluster);
 
-	if (__mcpm_cluster_state(cluster) != CLUSTER_DOWN)
-		return 0;
+//	if (__mcpm_cluster_state(cluster) != CLUSTER_DOWN)
+//		return 0;
 
 	/* last man standing, assert ACINACTM */
 	reg = readl(cpuxcfg_base + CPUCFG_CX_CTRL_REG1(cluster));
@@ -421,22 +504,6 @@ static void sunxi_mcpm_setup_entry_point(void)
 	__raw_writel(virt_to_phys(mcpm_entry_point), cpuscfg_base + PRIVATE_REG0);
 }
 
-static void __init sun8i_mcpm_boot_cpu_init(void)
-{
-	unsigned int mpidr, cpu, cluster;
-
-	mpidr = read_cpuid_mpidr();
-	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
-	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
-
-	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
-	BUG_ON(cpu >= MAX_CPUS_PER_CLUSTER || cluster >= MAX_NR_CLUSTERS);
-	sun8i_cpu_use_count[cluster][cpu] = 1;
-	sun8i_cluster_use_count[cluster]++;
-
-	cpumask_clear(&cpu_power_up_state_mask);
-	cpumask_set_cpu((cluster*4 + cpu),&cpu_power_up_state_mask);
-}
 
 extern void sun8i_power_up_setup(unsigned int affinity_level);
 
@@ -488,12 +555,13 @@ static int __init sunxi_mcpm_init(void)
 		return -ENOMEM;
 	}
 
+	printk("hello\n");
 	node = of_find_compatible_node(NULL, NULL,
 			"allwinner,sun9i-smp-sram");
 	if (!node)
 		return -ENODEV;
 
-	sun8i_mcpm_boot_cpu_init();
+//	sun8i_mcpm_boot_cpu_init();
 
 //	hrtimer_init(&cluster_power_down_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 //	cluster_power_down_timer.function = sun8i_cluster_power_down;
@@ -522,6 +590,15 @@ static int __init sunxi_mcpm_init(void)
 	pr_info("sunxi MCPM support installed\n");
 
 	sunxi_mcpm_setup_entry_point();
+
+	//hack
+//	if (sunxi_smc_readl(SUNXI_SRAMCTRL_VBASE + 0x24) & 0x1) {
+//		sunxi_soc_ver = SUN8IW6P1_REV_B;
+//	} else {
+//		sunxi_soc_ver = SUN8IW6P1_REV_A;
+//	}
+	soc_version = SUN8IW6P1_REV_B;
+
 
 	return ret;
 }

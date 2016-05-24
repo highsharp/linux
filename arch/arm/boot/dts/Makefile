@@ -724,9 +724,6 @@ dtb-$(CONFIG_MACH_SUN8I) += \
 	sun8i-h3-orangepi-one.dtb \
 	sun8i-h3-orangepi-pc.dtb \
 	sun8i-h3-orangepi-plus.dtb
-dtb-$(CONFIG_MACH_SUN9I) += \
-	sun9i-a80-optimus.dtb \
-	sun9i-a80-cubieboard4.dtb
 dtb-$(CONFIG_ARCH_TANGO) += \
 	tango4-vantage-1172.dtb
 dtb-$(CONFIG_ARCH_TEGRA_2x_SOC) += \
