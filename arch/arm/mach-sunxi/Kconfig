@@ -54,4 +54,12 @@ config SUN9I_A80_MCPM
 	  This is needed to provide CPU and cluster power management
 	  on Allwinner A80 implementing big.LITTLE.
 
+config SUN8I_A83T_MCPM
+	bool "Allwinner A83T Multi-Cluster PM support"
+	depends on MCPM && MACH_SUN8I
+	select ARM_CCI400_PORT_CTRL
+	help
+	  This is needed to provide CPU and cluster power management
+	  on Allwinner A83T
+
 endif
